@@ -1,0 +1,117 @@
+{
+  "metadata": {
+    "id": 1,
+    "flow_key": "user_approval_flow",
+    "name": "用户审批流程",
+    "version": "1.0.0",
+    "status": "published"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "type": "start",
+      "name": "开始",
+      "next": 2,
+      "description": "流程开始节点"
+    },
+    {
+      "id": 2,
+      "type": "switch",
+      "name": "用户类型判断",
+      "cases": [
+        {
+          "condition_rule_id": "is_vip_user",
+          "next": 3
+        },
+        {
+          "condition_rule_id": "is_new_user",
+          "next": 4
+        }
+      ],
+      "default": {
+        "next": 5
+      },
+      "description": "根据用户类型进行分支"
+    },
+    {
+      "id": 3,
+      "type": "action",
+      "name": "VIP用户处理",
+      "handler": "handle_vip_user",
+      "next": 6,
+      "description": "处理VIP用户逻辑"
+    },
+    {
+      "id": 4,
+      "type": "action",
+      "name": "新用户处理",
+      "handler": "handle_new_user",
+      "next": 6,
+      "description": "处理新用户逻辑"
+    },
+    {
+      "id": 5,
+      "type": "action",
+      "name": "普通用户处理",
+      "handler": "handle_normal_user",
+      "next": 6,
+      "description": "处理普通用户逻辑"
+    },
+    {
+      "id": 6,
+      "type": "end",
+      "name": "结束",
+      "description": "流程结束节点"
+    }
+  ],
+  "edges": [
+    {
+      "source": 1,
+      "target": 2
+    },
+    {
+      "source": 2,
+      "target": 3
+    },
+    {
+      "source": 2,
+      "target": 4
+    },
+    {
+      "source": 2,
+      "target": 5
+    },
+    {
+      "source": 3,
+      "target": 6
+    },
+    {
+      "source": 4,
+      "target": 6
+    },
+    {
+      "source": 5,
+      "target": 6
+    }
+  ],
+  "rules": [
+    {
+      "rule_id": "is_vip_user",
+      "type": "string_match",
+      "config": {
+        "field": "user_type",
+        "operation": "equals",
+        "value": "vip"
+      }
+    },
+    {
+      "rule_id": "is_new_user",
+      "type": "string_match",
+      "config": {
+        "field": "user_type",
+        "operation": "equals",
+        "value": "new"
+      }
+    }
+  ]
+}

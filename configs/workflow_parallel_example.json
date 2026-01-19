@@ -1,0 +1,84 @@
+{
+  "metadata": {
+    "id": 2,
+    "flow_key": "parallel_task_flow",
+    "name": "并行任务流程",
+    "version": "1.0.0",
+    "status": "published"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "type": "start",
+      "name": "开始",
+      "next": 2,
+      "description": "流程开始"
+    },
+    {
+      "id": 2,
+      "type": "parallel",
+      "name": "并行执行任务",
+      "parallel_nodes": [3, 4, 5],
+      "next": 6,
+      "description": "并行执行多个任务"
+    },
+    {
+      "id": 3,
+      "type": "action",
+      "name": "任务A",
+      "handler": "task_a",
+      "description": "执行任务A"
+    },
+    {
+      "id": 4,
+      "type": "action",
+      "name": "任务B",
+      "handler": "task_b",
+      "description": "执行任务B"
+    },
+    {
+      "id": 5,
+      "type": "action",
+      "name": "任务C",
+      "handler": "task_c",
+      "description": "执行任务C"
+    },
+    {
+      "id": 6,
+      "type": "end",
+      "name": "结束",
+      "description": "流程结束"
+    }
+  ],
+  "edges": [
+    {
+      "source": 1,
+      "target": 2
+    },
+    {
+      "source": 2,
+      "target": 3
+    },
+    {
+      "source": 2,
+      "target": 4
+    },
+    {
+      "source": 2,
+      "target": 5
+    },
+    {
+      "source": 3,
+      "target": 6
+    },
+    {
+      "source": 4,
+      "target": 6
+    },
+    {
+      "source": 5,
+      "target": 6
+    }
+  ],
+  "rules": []
+}
