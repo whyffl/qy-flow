@@ -5,17 +5,26 @@ import (
 	"fmt"
 	"log"
 	"time"
+	"workflow/internal/config"
 	"workflow/internal/workflow"
 	"workflow/pkg/constant"
 
 	"workflow/pkg/api"
 	"workflow/pkg/ruleengine"
 	"workflow/pkg/workflowengine"
+	"workflow/pkg/workflowengine/types"
 )
 
 func main() {
 	fmt.Println("=== 工作流引擎和规则引擎演示 ===")
 	fmt.Println()
+
+	// 加载配置文件
+	cfg, err := config.LoadConfig("configs/config.yaml")
+	if err != nil {
+		log.Fatalf("加载配置文件失败: %v", err)
+	}
+	fmt.Printf("配置加载成功: %s v%s\n\n", cfg.App.Name, cfg.App.Version)
 
 	// 1. 创建规则注册表（可选）
 	fmt.Println("1. 创建规则注册表...")
@@ -48,16 +57,24 @@ func main() {
 	}
 	fmt.Println()
 
-	// 3. 创建规则引擎（传入注册表）
+	// 3. 创建规则引擎（传入配置和注册表）
 	fmt.Println("3. 创建规则引擎...")
-	ruleEngine := ruleengine.NewEngine(nil, registry)
+	ruleEngineConfig := cfg.RuleEngine.ToEngineConfig()
+	ruleEngine := ruleengine.NewEngine(ruleEngineConfig, registry)
 	fmt.Println("   ✓ 规则引擎创建成功")
+	fmt.Printf("   - 工作池大小: %d\n", ruleEngineConfig.WorkerPoolSize)
+	fmt.Printf("   - 正则池大小: %d\n", ruleEngineConfig.RegexPoolSize)
 	fmt.Println()
 
-	// 4. 创建工作流引擎（使用默认配置）
+	// 4. 创建工作流引擎（使用配置）
 	fmt.Println("4. 创建工作流引擎...")
-	wfEngine := workflowengine.NewEngine(nil, ruleEngine)
+	wfEngineConfig := cfg.WorkflowEngine.ToEngineConfig()
+	wfEngine := workflowengine.NewEngine(wfEngineConfig, ruleEngine)
 	fmt.Println("   ✓ 工作流引擎创建成功")
+	fmt.Printf("   - 最大并发数: %d\n", wfEngineConfig.MaxConcurrent)
+	fmt.Printf("   - 默认超时: %d秒\n", wfEngineConfig.DefaultTimeout)
+	fmt.Printf("   - 工作池大小: %d\n", wfEngineConfig.WorkerPoolSize)
+	fmt.Printf("   - 缓存启用: %v\n", wfEngineConfig.EnableCache)
 	fmt.Println()
 
 	// 5. 创建组合API
@@ -92,7 +109,13 @@ func main() {
 		"age":       28.0,
 	}
 
-	result, err := engineAPI.Workflow.ExecuteWorkflow("user_approval_flow", vipData)
+	ctx := context.Background()
+	vipWorkflowCtx := &types.WorkflowContext{
+		Data:     vipData,
+		Metadata: make(map[string]interface{}),
+	}
+
+	result, err := engineAPI.Workflow.ExecuteWorkflowWithContext(ctx, "user_approval_flow", vipWorkflowCtx)
 	if err != nil {
 		log.Printf("执行失败: %v", err)
 	} else {
@@ -109,7 +132,12 @@ func main() {
 		"age":       22.0,
 	}
 
-	result, err = engineAPI.Workflow.ExecuteWorkflow("user_approval_flow", newData)
+	newWorkflowCtx := &types.WorkflowContext{
+		Data:     newData,
+		Metadata: make(map[string]interface{}),
+	}
+
+	result, err = engineAPI.Workflow.ExecuteWorkflowWithContext(ctx, "user_approval_flow", newWorkflowCtx)
 	if err != nil {
 		log.Printf("执行失败: %v", err)
 	} else {
@@ -126,7 +154,12 @@ func main() {
 		"age":       35.0,
 	}
 
-	result, err = engineAPI.Workflow.ExecuteWorkflow("user_approval_flow", normalData)
+	normalWorkflowCtx := &types.WorkflowContext{
+		Data:     normalData,
+		Metadata: make(map[string]interface{}),
+	}
+
+	result, err = engineAPI.Workflow.ExecuteWorkflowWithContext(ctx, "user_approval_flow", normalWorkflowCtx)
 	if err != nil {
 		log.Printf("执行失败: %v", err)
 	} else {
@@ -136,7 +169,11 @@ func main() {
 
 	// 11. 演示异步执行
 	fmt.Println("11. 异步执行工作流...")
-	engineAPI.Workflow.ExecuteWorkflowAsync("user_approval_flow", vipData, func(result map[string]interface{}, err error) {
+	asyncWorkflowCtx := &types.WorkflowContext{
+		Data:     vipData,
+		Metadata: make(map[string]interface{}),
+	}
+	engineAPI.Workflow.ExecuteWorkflowAsync(ctx, "user_approval_flow", asyncWorkflowCtx, func(result map[string]interface{}, err error) {
 		if err != nil {
 			log.Printf("异步执行失败: %v", err)
 		} else {
@@ -220,9 +257,14 @@ func main() {
 		} else {
 			fmt.Println("   ✓ 并行工作流创建成功")
 
-			parallelResult, err := engineAPI.Workflow.ExecuteWorkflow("parallel_task_flow", map[string]interface{}{
+			parallelData := map[string]interface{}{
 				"task_id": "TASK-001",
-			})
+			}
+			parallelWorkflowCtx := &types.WorkflowContext{
+				Data:     parallelData,
+				Metadata: make(map[string]interface{}),
+			}
+			parallelResult, err := engineAPI.Workflow.ExecuteWorkflowWithContext(ctx, "parallel_task_flow", parallelWorkflowCtx)
 			if err != nil {
 				log.Printf("执行并行工作流失败: %v", err)
 			} else {
@@ -234,18 +276,23 @@ func main() {
 
 	// 15. 获取统计信息
 	fmt.Println("15. 获取引擎统计信息...")
-	stats := engineAPI.Workflow.GetStats()
-	fmt.Printf("   - 工作流数量: %d\n", stats.WorkflowCount)
-	fmt.Printf("   - 规则数量: %d\n", stats.RuleCount)
+	wfStats := engineAPI.Workflow.GetStats()
+	ruleStats := engineAPI.Rule.GetStats()
+	fmt.Printf("   - 工作流数量: %d\n", wfStats.WorkflowCount)
+	fmt.Printf("   - 规则数量: %d\n", ruleStats.RuleCount)
 	fmt.Println()
 
 	// 16. 带超时的执行
 	fmt.Println("16. 带超时的执行...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// 使用工作流引擎内部的方法执行
-	_, err = wfEngine.ExecuteWorkflowWithContext(ctx, "user_approval_flow", vipData)
+	// 使用 API 执行工作流
+	timeoutWorkflowCtx := &types.WorkflowContext{
+		Data:     vipData,
+		Metadata: make(map[string]interface{}),
+	}
+	_, err = engineAPI.Workflow.ExecuteWorkflowWithContext(timeoutCtx, "user_approval_flow", timeoutWorkflowCtx)
 	if err != nil {
 		fmt.Printf("   - 执行超时或失败: %v\n", err)
 	} else {

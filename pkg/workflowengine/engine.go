@@ -152,14 +152,8 @@ func (e *Engine) RemoveWorkflow(flowKey string) error {
 	return nil
 }
 
-// ExecuteWorkflow 执行工作流
-func (e *Engine) ExecuteWorkflow(flowKey string, data map[string]interface{}) (map[string]interface{}, error) {
-	ctx := context.Background()
-	return e.ExecuteWorkflowWithContext(ctx, flowKey, data)
-}
-
 // ExecuteWorkflowWithContext 带上下文执行工作流
-func (e *Engine) ExecuteWorkflowWithContext(ctx context.Context, flowKey string, data map[string]interface{}) (map[string]interface{}, error) {
+func (e *Engine) ExecuteWorkflowWithContext(ctx context.Context, flowKey string, workflowCtx *types.WorkflowContext) (map[string]interface{}, error) {
 	// 获取工作流
 	workflow, err := e.GetWorkflow(flowKey)
 	if err != nil {
@@ -184,14 +178,19 @@ func (e *Engine) ExecuteWorkflowWithContext(ctx context.Context, flowKey string,
 	defer cancel()
 
 	// 执行工作流
-	return e.executeWorkflowInternal(ctx, workflow, data)
+	return e.executeWorkflowInternal(ctx, workflow, workflowCtx)
 }
 
 // executeWorkflowInternal 内部执行工作流逻辑
-func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *types.Workflow, data map[string]interface{}) (map[string]interface{}, error) {
+func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *types.Workflow, workflowCtx *types.WorkflowContext) (map[string]interface{}, error) {
 	// 从第一个节点开始
 	if len(workflow.Nodes) == 0 {
 		return nil, errors.ErrInvalidConfig("workflow has no nodes")
+	}
+
+	// 初始化 Metadata（如果为空）
+	if workflowCtx.Metadata == nil {
+		workflowCtx.Metadata = make(map[string]interface{})
 	}
 
 	currentNodeID := workflow.Nodes[0].ID
@@ -219,32 +218,31 @@ func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *types.Wo
 
 		// 执行节点
 		executor := executors.GetNodeExecutorWithEngine(currentNode.Type, e)
-		resultData, err := executor.Execute(ctx, currentNode, data, workflow)
+		resultWorkflowCtx, err := executor.Execute(ctx, currentNode, workflowCtx, workflow)
 		if err != nil {
 			return nil, errors.ErrExecutionFailed(currentNodeID, err)
 		}
 
-		data = resultData
+		// 更新工作流上下文
+		workflowCtx = resultWorkflowCtx
 
-		// 检查是否结束
-		nextNodeID, ok := data["_next_node_id"].(int)
-		if !ok || nextNodeID == 0 {
+		// 检查是否结束（从工作流上下文中获取下一个节点ID）
+		nextNodeID := workflowCtx.NextNodeID
+		if nextNodeID == 0 {
 			break
 		}
 
 		currentNodeID = nextNodeID
 	}
 
-	// 移除内部字段
-	delete(data, "_next_node_id")
-
-	return data, nil
+	// 返回业务数据
+	return workflowCtx.GetData(), nil
 }
 
 // ExecuteWorkflowAsync 异步执行工作流
-func (e *Engine) ExecuteWorkflowAsync(flowKey string, data map[string]interface{}, callback func(map[string]interface{}, error)) {
+func (e *Engine) ExecuteWorkflowAsync(ctx context.Context, flowKey string, workflowCtx *types.WorkflowContext, callback func(map[string]interface{}, error)) {
 	go func() {
-		result, err := e.ExecuteWorkflow(flowKey, data)
+		result, err := e.ExecuteWorkflowWithContext(ctx, flowKey, workflowCtx)
 		if callback != nil {
 			callback(result, err)
 		}

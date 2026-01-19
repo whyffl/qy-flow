@@ -5,22 +5,23 @@ import (
 	"sync"
 	"workflow/pkg/errors"
 	"workflow/pkg/workflowengine/types"
+	"workflow/pkg/workflowengine/utils"
 )
 
 // ParallelNodeExecutor 并行节点执行器
 type ParallelNodeExecutor struct{}
 
 // Execute 执行并行节点
-func (e *ParallelNodeExecutor) Execute(ctx context.Context, node *types.Node, data map[string]interface{}, workflow *types.Workflow) (map[string]interface{}, error) {
+func (e *ParallelNodeExecutor) Execute(ctx context.Context, node *types.Node, workflowCtx *types.WorkflowContext, workflow *types.Workflow) (*types.WorkflowContext, error) {
 	if len(node.ParallelNodes) == 0 {
-		data["_next_node_id"] = node.Next
-		return data, nil
+		workflowCtx.SetNextNode(node.Next)
+		return workflowCtx, nil
 	}
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	errChan := make(chan error, len(node.ParallelNodes))
-	results := make(map[int]map[string]interface{})
+	results := make(map[int]*types.WorkflowContext)
 
 	// 并行执行所有子节点
 	for _, childNodeID := range node.ParallelNodes {
@@ -43,10 +44,12 @@ func (e *ParallelNodeExecutor) Execute(ctx context.Context, node *types.Node, da
 				return
 			}
 
-			// 执行子节点
-			resultData := deepCopyMap(data)
+			// 执行子节点，创建新的工作流上下文
+			childWorkflowCtx := &types.WorkflowContext{
+				Data: utils.DeepCopyMap(workflowCtx.GetData()),
+			}
 			executor := GetNodeExecutor(childNode.Type)
-			result, err := executor.Execute(ctx, childNode, resultData, workflow)
+			result, err := executor.Execute(ctx, childNode, childWorkflowCtx, workflow)
 
 			mu.Lock()
 			if err != nil {
@@ -68,24 +71,14 @@ func (e *ParallelNodeExecutor) Execute(ctx context.Context, node *types.Node, da
 		}
 	}
 
-	// 合并所有结果（合并非保留字段）
+	// 合并所有结果到主上下文的业务数据中
 	for _, result := range results {
-		for key, value := range result {
-			if key != "_next_node_id" {
-				data[key] = value
-			}
+		for key, value := range result.GetData() {
+			workflowCtx.GetData()[key] = value
 		}
 	}
 
-	data["_next_node_id"] = node.Next
-	return data, nil
-}
-
-// deepCopyMap 深拷贝map
-func deepCopyMap(original map[string]interface{}) map[string]interface{} {
-	copiedMap := make(map[string]interface{})
-	for key, value := range original {
-		copiedMap[key] = value
-	}
-	return copiedMap
+	// 设置下一个节点（在上下文中，而不是修改业务数据）
+	workflowCtx.SetNextNode(node.Next)
+	return workflowCtx, nil
 }

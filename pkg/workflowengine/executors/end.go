@@ -9,11 +9,12 @@ import (
 type EndNodeExecutor struct{}
 
 // Execute 执行结束节点
-func (e *EndNodeExecutor) Execute(ctx context.Context, node *types.Node, data map[string]interface{}, workflow *types.Workflow) (map[string]interface{}, error) {
+func (e *EndNodeExecutor) Execute(ctx context.Context, node *types.Node, workflowCtx *types.WorkflowContext, workflow *types.Workflow) (*types.WorkflowContext, error) {
 	_ = ctx
 	_ = node
 	_ = workflow
 
-	data["_next_node_id"] = 0
-	return data, nil
+	// 设置下一个节点为0，表示工作流结束
+	workflowCtx.SetNextNode(0)
+	return workflowCtx, nil
 }
