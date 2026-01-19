@@ -21,15 +21,20 @@ type Engine struct {
 }
 
 // NewEngine 创建规则引擎
-func NewEngine(config *Config) *Engine {
+func NewEngine(config *Config, registry *RuleRegistry) *Engine {
 	if config == nil {
 		config = DefaultConfig()
+	}
+
+	// 如果未传入 registry，则创建一个新的
+	if registry == nil {
+		registry = NewRuleRegistry()
 	}
 
 	engine := &Engine{
 		rules:      make(map[string]Rule),
 		ruleDefs:   make(map[string]RuleDefinition),
-		registry:   NewRuleRegistry(),
+		registry:   registry,
 		workerPool: make(chan struct{}, config.WorkerPoolSize),
 		timeout:    config.GetTimeout(),
 		config:     config,
@@ -67,7 +72,7 @@ func (e *Engine) AddRuleFromDefinition(ruleID string, definition RuleDefinition)
 		return errors.ErrInvalidConfig("rule ID cannot be empty")
 	}
 
-	rule, err := NewRuleFromDefinition(definition)
+	rule, err := NewRuleFromDefinition(definition, e.registry)
 	if err != nil {
 		return err
 	}

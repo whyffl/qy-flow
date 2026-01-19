@@ -4,14 +4,16 @@ import (
 	"context"
 	"sync"
 	"time"
+	"workflow/pkg/workflowengine/executors"
 
 	"workflow/pkg/errors"
 	"workflow/pkg/ruleengine"
+	"workflow/pkg/workflowengine/types"
 )
 
 // Engine 工作流引擎
 type Engine struct {
-	workflows    map[string]*Workflow
+	workflows    map[string]*types.Workflow
 	config       *Config
 	ruleEngine   *ruleengine.Engine
 	workerPool   chan struct{}
@@ -29,7 +31,7 @@ type WorkflowCache struct {
 }
 
 type cacheEntry struct {
-	workflow *Workflow
+	workflow *types.Workflow
 	expires  time.Time
 }
 
@@ -40,7 +42,7 @@ func NewEngine(config *Config, ruleEngine *ruleengine.Engine) *Engine {
 	}
 
 	engine := &Engine{
-		workflows:  make(map[string]*Workflow),
+		workflows:  make(map[string]*types.Workflow),
 		config:     config,
 		ruleEngine: ruleEngine,
 		workerPool: make(chan struct{}, config.WorkerPoolSize),
@@ -59,7 +61,7 @@ func NewEngine(config *Config, ruleEngine *ruleengine.Engine) *Engine {
 }
 
 // AddWorkflow 添加工作流
-func (e *Engine) AddWorkflow(workflow *Workflow) error {
+func (e *Engine) AddWorkflow(workflow *types.Workflow) error {
 	if workflow == nil {
 		return errors.ErrInvalidConfig("workflow cannot be nil")
 	}
@@ -76,8 +78,8 @@ func (e *Engine) AddWorkflow(workflow *Workflow) error {
 }
 
 // AddWorkflowFromDefinition 从定义添加工作流
-func (e *Engine) AddWorkflowFromDefinition(def *WorkflowDefinition) error {
-	workflow := &Workflow{
+func (e *Engine) AddWorkflowFromDefinition(def *types.WorkflowDefinition) error {
+	workflow := &types.Workflow{
 		Metadata: def.Metadata,
 		Nodes:    def.Nodes,
 		Edges:    def.Edges,
@@ -86,7 +88,11 @@ func (e *Engine) AddWorkflowFromDefinition(def *WorkflowDefinition) error {
 
 	// 创建规则
 	for _, ruleRef := range def.Rules {
-		rule, err := ruleengine.NewRule(ruleRef.Type, ruleRef.Config)
+		rule, err := ruleengine.NewRule(
+			ruleRef.Type,
+			ruleRef.Config,
+			e.ruleEngine.GetRegistry(),
+		)
 		if err != nil {
 			return err
 		}
@@ -105,7 +111,7 @@ func (e *Engine) AddWorkflowFromDefinition(def *WorkflowDefinition) error {
 }
 
 // GetWorkflow 获取工作流
-func (e *Engine) GetWorkflow(flowKey string) (*Workflow, error) {
+func (e *Engine) GetWorkflow(flowKey string) (*types.Workflow, error) {
 	// 先从缓存获取
 	if e.cache != nil {
 		if cached := e.cache.Get(flowKey); cached != nil {
@@ -182,7 +188,7 @@ func (e *Engine) ExecuteWorkflowWithContext(ctx context.Context, flowKey string,
 }
 
 // executeWorkflowInternal 内部执行工作流逻辑
-func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *Workflow, data map[string]interface{}) (map[string]interface{}, error) {
+func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *types.Workflow, data map[string]interface{}) (map[string]interface{}, error) {
 	// 从第一个节点开始
 	if len(workflow.Nodes) == 0 {
 		return nil, errors.ErrInvalidConfig("workflow has no nodes")
@@ -199,7 +205,7 @@ func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *Workflow
 		}
 
 		// 查找当前节点
-		var currentNode *Node
+		var currentNode *types.Node
 		for i := range workflow.Nodes {
 			if workflow.Nodes[i].ID == currentNodeID {
 				currentNode = &workflow.Nodes[i]
@@ -212,7 +218,7 @@ func (e *Engine) executeWorkflowInternal(ctx context.Context, workflow *Workflow
 		}
 
 		// 执行节点
-		executor := GetNodeExecutor(currentNode.Type)
+		executor := executors.GetNodeExecutorWithEngine(currentNode.Type, e)
 		resultData, err := executor.Execute(ctx, currentNode, data, workflow)
 		if err != nil {
 			return nil, errors.ErrExecutionFailed(currentNodeID, err)
@@ -291,7 +297,7 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 // WorkflowCache 方法
 
 // Put 存入缓存
-func (c *WorkflowCache) Put(key string, workflow *Workflow) {
+func (c *WorkflowCache) Put(key string, workflow *types.Workflow) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -302,7 +308,7 @@ func (c *WorkflowCache) Put(key string, workflow *Workflow) {
 }
 
 // Get 从缓存获取
-func (c *WorkflowCache) Get(key string) *Workflow {
+func (c *WorkflowCache) Get(key string) *types.Workflow {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

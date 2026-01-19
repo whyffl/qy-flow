@@ -1,6 +1,8 @@
-package workflowengine
+package types
 
-import "workflow/pkg/ruleengine"
+import (
+	"workflow/pkg/ruleengine"
+)
 
 // Case 节点中的条件分支
 type Case struct {

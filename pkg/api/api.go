@@ -3,6 +3,7 @@ package api
 import (
 	"workflow/pkg/ruleengine"
 	"workflow/pkg/workflowengine"
+	"workflow/pkg/workflowengine/types"
 )
 
 // WorkflowEngineAPI 工作流引擎API
@@ -18,12 +19,12 @@ func NewWorkflowEngineAPI(engine *workflowengine.Engine) *WorkflowEngineAPI {
 }
 
 // CreateWorkflow 创建工作流
-func (api *WorkflowEngineAPI) CreateWorkflow(workflow *workflowengine.Workflow) error {
+func (api *WorkflowEngineAPI) CreateWorkflow(workflow *types.Workflow) error {
 	return api.engine.AddWorkflow(workflow)
 }
 
 // CreateWorkflowFromDefinition 从定义创建工作流
-func (api *WorkflowEngineAPI) CreateWorkflowFromDefinition(def *workflowengine.WorkflowDefinition) error {
+func (api *WorkflowEngineAPI) CreateWorkflowFromDefinition(def *types.WorkflowDefinition) error {
 	return api.engine.AddWorkflowFromDefinition(def)
 }
 
@@ -38,7 +39,7 @@ func (api *WorkflowEngineAPI) ExecuteWorkflowAsync(flowKey string, data map[stri
 }
 
 // GetWorkflow 获取工作流
-func (api *WorkflowEngineAPI) GetWorkflow(flowKey string) (*workflowengine.Workflow, error) {
+func (api *WorkflowEngineAPI) GetWorkflow(flowKey string) (*types.Workflow, error) {
 	return api.engine.GetWorkflow(flowKey)
 }
 
@@ -75,7 +76,7 @@ func NewRuleEngineAPI(engine *ruleengine.Engine) *RuleEngineAPI {
 
 // CreateRule 创建规则
 func (api *RuleEngineAPI) CreateRule(ruleID string, ruleType string, config ruleengine.RuleConfig) error {
-	rule, err := ruleengine.NewRule(ruleType, config)
+	rule, err := ruleengine.NewRule(ruleType, config, api.engine.GetRegistry())
 	if err != nil {
 		return err
 	}
@@ -128,6 +129,16 @@ func (api *RuleEngineAPI) GetRuleCount() int {
 // GetRegistry 获取规则注册表
 func (api *RuleEngineAPI) GetRegistry() *ruleengine.RuleRegistry {
 	return api.engine.GetRegistry()
+}
+
+// RegisterHandler 注册自定义处理器
+func (api *RuleEngineAPI) RegisterHandler(name string, handler func(map[string]interface{}) bool) error {
+	return api.engine.GetRegistry().RegisterHandler(name, handler)
+}
+
+// UnregisterHandler 注销自定义处理器
+func (api *RuleEngineAPI) UnregisterHandler(name string) {
+	api.engine.GetRegistry().UnregisterHandler(name)
 }
 
 // EngineAPI 组合API
